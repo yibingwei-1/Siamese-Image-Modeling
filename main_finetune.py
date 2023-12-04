@@ -196,7 +196,7 @@ def main(args):
     print(dataset_train)
     print(dataset_val)
 
-    if True:  # args.distributed:
+    if True:  # args.env.distributed:
         num_tasks = misc.get_world_size()
         global_rank = misc.get_rank()
         sampler_train = torch.utils.data.DistributedSampler(
@@ -302,7 +302,7 @@ def main(args):
     print("accumulate grad iterations: %d" % args.accum_iter)
     print("effective batch size: %d" % eff_batch_size)
 
-    if args.distributed:
+    if args.env.distributed:
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
         model_without_ddp = model.module
 
@@ -338,7 +338,7 @@ def main(args):
     start_time = time.time()
     max_accuracy = 0.0
     for epoch in range(args.start_epoch, args.epochs):
-        if args.distributed:
+        if args.env.distributed:
             data_loader_train.sampler.set_epoch(epoch)
         train_stats = train_one_epoch(
             model, criterion, data_loader_train,

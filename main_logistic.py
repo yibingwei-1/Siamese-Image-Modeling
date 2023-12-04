@@ -259,10 +259,10 @@ def init_distributed_mode(args):
     else:
         print('Not using distributed mode')
         setup_for_distributed(is_master=True)  # hack
-        args.distributed = False
+        args.env.distributed = False
         return
 
-    args.distributed = True
+    args.env.distributed = True
 
     torch.cuda.set_device(args.gpu)
     args.dist_backend = 'nccl'

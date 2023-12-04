@@ -18,7 +18,7 @@ import torch.nn.functional as F
 
 import timm.models.vision_transformer
 from timm.models.layers import Mlp, DropPath
-from timm.models.layers.helpers import to_2tuple
+from timm.models.layers import to_2tuple
 
 from util.misc import LayerNorm
 

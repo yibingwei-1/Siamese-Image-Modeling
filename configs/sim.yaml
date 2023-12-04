@@ -1,0 +1,73 @@
+defaults:
+  - hydra: default
+  - env: default
+  - log: default
+
+worker: main_pretrain
+job_name: sim
+dataset: imagenet100
+
+batch_size: 64
+epochs: 400
+accum_iter: 1
+
+# model params
+model: mae_vit_large_patch16
+input_size: 224
+mask_ratio: 0.75
+norm_pix_loss: True
+use_abs_pos_emb: True
+use_shared_rel_pos_bias: False
+
+
+# optimizer params
+weight_decay: 0.05
+lr:
+blr: 1e-3
+min_lr: 0.
+warmup_epochs: 40
+
+# dataser params
+data_path: /home/pmorgado/datasets/ILSVRC2012
+output_dir: checkpoints
+# log_dir: # path where to tensorboard log
+# device: cuda
+# seed: 42
+
+resume: True
+start_epoch: 0
+
+# SiameseIM params
+crop_min: 0.2
+use_tcs_dataset: False
+
+# model
+decoder_embed_dim: 512
+drop_path_rate: 0.0
+init_values:  #?
+projector_depth: 2
+predictor_depth: 4
+use_proj_ln: False
+use_pred_ln: False
+train_patch_embed: False
+online_ln: False
+
+loss_type: mae
+neg_weight: 0.02
+
+with_blockwise_mask: False
+blockwise_num_masking_patches: 75
+
+# hyper-parameter
+mm: 0.996
+mmschedule: const
+lambda_F: 50 #?
+T: 0.2
+clip_grad: None
+beta2: 0.95 #?
+fp32: False
+amp_growth_interval: 2000 #?
+
+knn_eval_only: False
+
+knn_feature: avg_pool_prenorm

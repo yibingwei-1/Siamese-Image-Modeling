@@ -53,7 +53,7 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
     out: (M, D)
     """
     assert embed_dim % 2 == 0
-    omega = np.arange(embed_dim // 2, dtype=np.float)
+    omega = np.arange(embed_dim // 2, dtype=float)
     omega /= embed_dim / 2.
     omega = 1. / 10000**omega  # (D/2,)
 
@@ -86,7 +86,7 @@ def get_2d_sincos_pos_embed_relative(delta_i, delta_j, delta_h, delta_w, relativ
     grid_w = torch.einsum('b,n->bn', delta_w, raw_grid_w.flatten().to(delta_w)) + delta_j.unsqueeze(-1)
 
     flip_grid_w = -torch.einsum('b,n->bn', [delta_w, raw_grid_w.flatten().to(delta_h)]) + flip_delta_j[:, None]
-    relative_flip = relative_flip.float().unsqueeze(-1)
+    relative_flip = relative_flip.float().unsqueeze(-1).to(flip_grid_w.device)
     grid_w = relative_flip * flip_grid_w + (1-relative_flip) * grid_w
     grid_w = grid_w - 0.5
     grid_h = grid_h - 0.5

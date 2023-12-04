@@ -332,6 +332,35 @@ class SiameseIMViT(nn.Module):
 
         return x, mask, ids_restore
 
+    def forward_features(self, x, feature):
+        # embed patches
+        x = self.patch_embed(x)
+
+        # add pos embed w/o cls token
+        x = x + self.pos_embed[:, 1:, :]
+
+        # append cls token
+        cls_token = self.cls_token + self.pos_embed[:, :1, :]
+        cls_tokens = cls_token.expand(x.shape[0], -1, -1)
+        x = torch.cat((cls_tokens, x), dim=1)
+
+        # apply Transformer blocks
+        for blk in self.blocks:
+            x = blk(x)
+            
+        if feature =='avg_pool_postnorm':
+            x = x[:, 1:, :].mean(dim=1)  # global pool without cls token
+            outcome = self.student_norm(x)
+        elif feature =='avg_pool_prenorm':
+            x = self.student_norm(x)
+            outcome = x[:, 1:, :].mean(dim=1)
+        elif feature =='cls':
+            x = self.student_norm(x)
+            outcome = x[:, 0]
+        else:
+            raise NotImplementedError
+        return outcome
+
     def forward_decoder(self, x, ids_restore):
         # embed tokens
         x = self.decoder_embed(x)
@@ -475,8 +504,9 @@ class SiameseIMViT(nn.Module):
 
         # compute neg term
         correlation = (dense_target.T @ dense_target) / dense_target.shape[0]
-        torch.distributed.all_reduce(correlation)
-        correlation = correlation / torch.distributed.get_world_size()
+        if torch.distributed.is_initialized():
+            torch.distributed.all_reduce(correlation)
+            correlation = correlation / torch.distributed.get_world_size()
         
         neg_term = torch.diagonal(dense_pred @ correlation @ dense_pred.T).mean()
 

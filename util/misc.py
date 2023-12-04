@@ -21,7 +21,7 @@ from pathlib import Path
 
 import torch
 import torch.distributed as dist
-from torch._six import inf
+from torch import inf
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -179,9 +179,9 @@ def setup_for_distributed(is_master):
     builtin_print = builtins.print
 
     def print(*args, **kwargs):
-        force = kwargs.pop('force', False)
+        # force = kwargs.pop('force', False)
         # force = force or (get_world_size() > 8)
-        if is_master or force:
+        if is_master:
             now = datetime.datetime.now().time()
             builtin_print('[{}] '.format(now), end='')  # print with time stamp
             builtin_print(*args, **kwargs)
@@ -217,63 +217,85 @@ def save_on_master(*args, **kwargs):
     if is_main_process():
         torch.save(*args, **kwargs)
 
-
-def init_distributed_mode(args):
-    if args.dist_on_itp:
-        args.rank = int(os.environ['OMPI_COMM_WORLD_RANK'])
-        args.world_size = int(os.environ['OMPI_COMM_WORLD_SIZE'])
-        args.gpu = int(os.environ['OMPI_COMM_WORLD_LOCAL_RANK'])
-        args.dist_url = "tcp://%s:%s" % (os.environ['MASTER_ADDR'], os.environ['MASTER_PORT'])
-        os.environ['LOCAL_RANK'] = str(args.gpu)
-        os.environ['RANK'] = str(args.rank)
-        os.environ['WORLD_SIZE'] = str(args.world_size)
-        # ["RANK", "WORLD_SIZE", "MASTER_ADDR", "MASTER_PORT", "LOCAL_RANK"]
-    elif 'RANK' in os.environ and 'WORLD_SIZE' in os.environ:
-        args.rank = int(os.environ["RANK"])
-        args.world_size = int(os.environ['WORLD_SIZE'])
-        args.gpu = int(os.environ['LOCAL_RANK'])
-    elif 'SLURM_PROCID' in os.environ:
-        args.rank = int(os.environ['SLURM_PROCID'])
-        args.world_size = int(os.environ['SLURM_NTASKS'])
-        node_list = os.environ['SLURM_STEP_NODELIST']
-        num_gpus = torch.cuda.device_count()
-        args.gpu = args.rank % torch.cuda.device_count()
-        torch.cuda.set_device(args.rank % num_gpus)
-        import subprocess
-        addr = subprocess.getoutput(
-            f'scontrol show hostname {node_list} | head -n1')
-        # specify master port
-        if hasattr(args, 'port'):
-            os.environ['MASTER_PORT'] = str(args.port)
-        elif 'MASTER_PORT' in os.environ:
-            pass  # use MASTER_PORT in the environment variable
-        else:
-            # 29500 is torch.distributed default port
-            os.environ['MASTER_PORT'] = '28506'
-        # use MASTER_ADDR in the environment variable if it already exists
-        if 'MASTER_ADDR' not in os.environ:
-            os.environ['MASTER_ADDR'] = addr
-        os.environ['WORLD_SIZE'] = str(args.world_size)
-        os.environ['LOCAL_RANK'] = str(args.rank % num_gpus)
-        os.environ['LOCAL_SIZE'] = str(num_gpus)
-        os.environ['RANK'] = str(args.rank)
-        # dist.init_process_group(backend='nccl')
+def init_distributed_mode(local_rank, args):
+    ngpus_per_node = torch.cuda.device_count()
+    # args.env.distributed = ngpus_per_node > 0
+    if args.env.distributed:
+        args.env.world_size = ngpus_per_node * args.env.world_size
+        args.env.rank = args.env.rank * ngpus_per_node + local_rank
     else:
         print('Not using distributed mode')
         setup_for_distributed(is_master=True)  # hack
-        args.distributed = False
+        args.env.world_size = 1
+        args.env.rank = 0
         return
 
-    args.distributed = True
+    print(args.env.dist_backend, args.env.dist_url, args.env.world_size, args.env.rank)
+    dist.init_process_group(backend=args.env.dist_backend, init_method=args.env.dist_url,
+                            world_size=args.env.world_size, rank=args.env.rank)
 
-    torch.cuda.set_device(args.gpu)
-    args.dist_backend = 'nccl'
-    print('| distributed init (rank {}): {}, gpu {}'.format(
-        args.rank, args.dist_url, args.gpu), flush=True)
-    torch.distributed.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
-                                         world_size=args.world_size, rank=args.rank)
+    torch.cuda.set_device(local_rank)
+    print('Distributed init (rank {}): {}, gpu {}'.format(
+        args.env.rank, args.env.dist_url, local_rank), flush=True)
     torch.distributed.barrier()
-    setup_for_distributed(args.rank == 0)
+    setup_for_distributed(args.env.rank == 0 and local_rank == 0)
+
+# def init_distributed_mode(args):
+#     if args.dist_on_itp:
+#         args.rank = int(os.environ['OMPI_COMM_WORLD_RANK'])
+#         args.world_size = int(os.environ['OMPI_COMM_WORLD_SIZE'])
+#         args.gpu = int(os.environ['OMPI_COMM_WORLD_LOCAL_RANK'])
+#         args.dist_url = "tcp://%s:%s" % (os.environ['MASTER_ADDR'], os.environ['MASTER_PORT'])
+#         os.environ['LOCAL_RANK'] = str(args.gpu)
+#         os.environ['RANK'] = str(args.rank)
+#         os.environ['WORLD_SIZE'] = str(args.world_size)
+#         # ["RANK", "WORLD_SIZE", "MASTER_ADDR", "MASTER_PORT", "LOCAL_RANK"]
+#     elif 'RANK' in os.environ and 'WORLD_SIZE' in os.environ:
+#         args.rank = int(os.environ["RANK"])
+#         args.world_size = int(os.environ['WORLD_SIZE'])
+#         args.gpu = int(os.environ['LOCAL_RANK'])
+#     elif 'SLURM_PROCID' in os.environ:
+#         args.rank = int(os.environ['SLURM_PROCID'])
+#         args.world_size = int(os.environ['SLURM_NTASKS'])
+#         node_list = os.environ['SLURM_STEP_NODELIST']
+#         num_gpus = torch.cuda.device_count()
+#         args.gpu = args.rank % torch.cuda.device_count()
+#         torch.cuda.set_device(args.rank % num_gpus)
+#         import subprocess
+#         addr = subprocess.getoutput(
+#             f'scontrol show hostname {node_list} | head -n1')
+#         # specify master port
+#         if hasattr(args, 'port'):
+#             os.environ['MASTER_PORT'] = str(args.port)
+#         elif 'MASTER_PORT' in os.environ:
+#             pass  # use MASTER_PORT in the environment variable
+#         else:
+#             # 29500 is torch.distributed default port
+#             os.environ['MASTER_PORT'] = '28506'
+#         # use MASTER_ADDR in the environment variable if it already exists
+#         if 'MASTER_ADDR' not in os.environ:
+#             os.environ['MASTER_ADDR'] = addr
+#         os.environ['WORLD_SIZE'] = str(args.world_size)
+#         os.environ['LOCAL_RANK'] = str(args.rank % num_gpus)
+#         os.environ['LOCAL_SIZE'] = str(num_gpus)
+#         os.environ['RANK'] = str(args.rank)
+#         # dist.init_process_group(backend='nccl')
+#     else:
+#         print('Not using distributed mode')
+#         setup_for_distributed(is_master=True)  # hack
+#         args.env.distributed = False
+#         return
+
+#     args.env.distributed = True
+
+#     torch.cuda.set_device(args.gpu)
+#     args.dist_backend = 'nccl'
+#     print('| distributed init (rank {}): {}, gpu {}'.format(
+#         args.rank, args.dist_url, args.gpu), flush=True)
+#     torch.distributed.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
+#                                          world_size=args.world_size, rank=args.rank)
+#     torch.distributed.barrier()
+#     setup_for_distributed(args.rank == 0)
 
 
 class NativeScalerWithGradNormCount:
@@ -591,3 +613,194 @@ class LabelSmoothingCrossEntropyWithSoftTarget(nn.Module):
             return loss
         else:
             raise NotImplementedError
+
+
+class CheckpointManager:
+    def __init__(self,
+                 modules,
+                 ckpt_dir,
+                 epochs,
+                 save_freq=None,
+                 suffix='',
+                 save_list=[]):
+        self.modules = modules
+        self.ckpt_dir = ckpt_dir
+        self.epochs = epochs
+        self.save_freq = save_freq
+        self.suffix = suffix
+
+        self.distributed = dist.is_available() and dist.is_initialized()
+        self.world_size = dist.get_world_size() if self.distributed else 1
+        self.rank = dist.get_rank() if self.distributed else 0
+
+        self.save_list = save_list
+
+        if self.rank == 0:
+            os.makedirs(os.path.join(self.ckpt_dir), exist_ok=True)
+
+    def resume(self):
+        ckpt_fname = os.path.join(self.ckpt_dir, f'checkpoint_latest{self.suffix}.pth')
+        start_epoch = 0
+        if os.path.isfile(ckpt_fname):
+            checkpoint = torch.load(ckpt_fname, map_location='cpu')
+
+            # Load state dict
+            for k in self.modules:
+                self.modules[k].load_state_dict(checkpoint[k])
+                # try:
+                #     self.modules[k].load_state_dict(checkpoint[k])
+                # except KeyError:
+                #     self.modules[k].load_state_dict(checkpoint['model'])
+            start_epoch = checkpoint['epoch']
+            print(f"=> loaded checkpoint '{ckpt_fname}' (epoch {checkpoint['epoch']})")
+
+        return start_epoch
+
+    def create_state_dict(self, save_dict=None):
+        state = {k: self.modules[k].state_dict() for k in self.modules}
+        if save_dict is not None:
+            state.update(save_dict)
+        return state
+
+    def checkpoint(self, epoch, save_dict=None):
+        if self.rank != 0:
+            return
+        state = self.create_state_dict(save_dict)
+        ckpt_fname = os.path.join(self.ckpt_dir, f'checkpoint_latest{self.suffix}.pth')
+        torch.save(state, ckpt_fname)
+        print(f"=> saved checkpoint '{ckpt_fname}' (epoch {epoch})")
+
+        if self.save_freq is not None and ((epoch % self.save_freq == 0) or epoch in self.save_list):
+            ckpt_fname = os.path.join(self.ckpt_dir, f'checkpoint_{epoch:04d}{self.suffix}.pth')
+            torch.save(state, ckpt_fname)
+            print(f"=> saved checkpoint '{ckpt_fname}' (epoch {epoch})")
+
+    def convert_det_ckpt(self):
+        """convert to the detectron2 checkpoint
+        """
+        checkpoint = self.create_state_dict()
+        checkpoint_model = checkpoint['state_dict']
+        # print(list(checkpoint_model.keys()))
+        # retain only base_encoder up to before the embedding layer
+        for k in list(checkpoint_model.keys()):
+            # if k.startswith('module.encoder.embed.'):
+            #     # rename from embed to patch_embed # ntd for path1_maefeat only
+            #     checkpoint_model["patch_embed."+k[len("module.encoder.embed."):]] = checkpoint_model[k]
+            if k.startswith('module.encoder.') and k!="module.encoder.mask_token":
+                # remove prefix
+                checkpoint_model[k[len("module.encoder."):]] = checkpoint_model[k]
+            if k.startswith('encoder.') and k!="encoder.mask_token":
+                # remove prefix
+                checkpoint_model[k[len("encoder."):]] = checkpoint_model[k]
+            # delete renamed or unused k
+            del checkpoint_model[k]
+
+        # modify the patch embed: linear to 2D CNN
+        cnn_weight = checkpoint_model['patch_embed.proj.weight'].reshape(-1,16,16,3)
+        cnn_weight = torch.einsum('lpqc->lcpq', cnn_weight)
+
+        checkpoint_model['patch_embed.proj.weight'] = cnn_weight
+        
+        state = {"model": checkpoint_model}
+        tgt_path = os.path.join(self.ckpt_dir, f'checkpoint_latest_detectron2.pth')
+        torch.save(state, tgt_path)
+        print(f"=> saved detectron2 checkpoint '{tgt_path}'")
+
+
+def avg_pairwise_norm_dist(q,k,name=""):
+    import torch.nn.functional as F
+
+    q = F.normalize(q, p=2, dim=-1)
+    k = F.normalize(k, p=2, dim=-1)
+
+    if len(q.shape) == 3 and len(k.shape) == 3:
+        dist = 2-2*torch.einsum('npd,nqd->npq', q, k)
+        return {name : dist.mean().item()}
+    else:
+        dist = 2-2*torch.einsum('nhpd,nhqd->nhpq', q, k)
+        return {name+str(h) : dist[:,h].mean().item() for h in range(q.shape[1])}
+    
+def linear2cnn(linear_weight):
+    # modify the patch embed: linear to 2D CNN
+    return torch.einsum('lpqc->lcpq', linear_weight.reshape(-1,16,16,3))
+
+def cnn2linear(cnn_weight):
+    return torch.einsum('lcpq->lpqc', cnn_weight).reshape(-1,16*16*3)
+
+
+def init_wandb(args, job_dir, entity='pmorgado', project='mae-vs-mclr', job_name='tmp'):
+    import wandb
+    wandb_dir = os.path.join(job_dir, 'wandb')
+    os.makedirs(wandb_dir, exist_ok=True)
+    runid = None
+    if os.path.exists(f"{wandb_dir}/runid.txt"):
+        runid = open(f"{wandb_dir}/runid.txt").read()
+    wandb.init(project=project,
+               name=job_name,
+               dir=wandb_dir,
+               entity=entity,
+               resume="allow",
+               id=runid)
+    open(f"{wandb_dir}/runid.txt", 'w').write(wandb.run.id)
+    wandb.config.update({k: args[k] for k in args if k not in wandb.config})
+
+@torch.no_grad()
+def concat_all_gather(tensor):
+    """
+    Performs all_gather operation on the provided tensors.
+    *** Warning ***: torch.distributed.all_gather has no gradient.
+    """
+    if not torch.distributed.is_initialized():
+        return tensor
+    tensors_gather = [torch.ones_like(tensor)
+                      for _ in range(torch.distributed.get_world_size())]
+    torch.distributed.all_gather(tensors_gather, tensor, async_op=False)
+
+    output = torch.cat(tensors_gather, dim=0)
+    return output
+
+@torch.no_grad()
+def eval_knn(eval_loader, model, epoch, args, device, bn=False):
+    from torch.nn import functional as F
+    from copy import deepcopy
+    print(f'==> Begin evaluation epoch {epoch}')
+    print_freq = args.log.print_freq
+
+    metric_logger = MetricLogger(delimiter="  ")
+    
+    try:
+        model = deepcopy(model.module)  #if args.env.distributed else model
+    except:
+        model = deepcopy(model)
+
+    # Extract features
+    features, labels = [], []
+    for images, y in metric_logger.log_every(eval_loader, print_freq, 'Extract features'):
+        images, y = images.to(device, non_blocking=True), y.to(device, non_blocking=True)
+        _features = model.forward_features(images, feature=args.knn_feature)
+        if bn:
+            bn = torch.nn.BatchNorm1d(_features.shape[-1], affine=False).to(device)
+            _features = bn(_features)
+        features.append(_features)                
+        labels.append(y)
+
+    # Synchronize across gpus
+    features = concat_all_gather(F.normalize(torch.cat(features), p=2, dim=1))
+    labels = concat_all_gather(torch.cat(labels))
+
+    # kNN Evaluation
+    metric_logger = MetricLogger(delimiter="  ")
+    metric_logger.add_meter('Acc1', SmoothedValue(fmt='avg:6.3f'))
+    for i in metric_logger.log_every(range(0, features.shape[0], args.batch_size), 250):
+        qfeats = features[i:i+args.batch_size]
+        qlbls = labels[i:i+args.batch_size]
+        scores = torch.einsum('qd,nd->qn', qfeats, features)
+        topk_idx = torch.topk(scores, k=2, dim=1, sorted=True)[1][:, 1]
+        topk_lbl = labels[topk_idx]
+
+        acc1 = (topk_lbl == qlbls).float().mean()*100
+        metric_logger.update(Acc1=acc1, n=qlbls.shape[0])
+
+    metric_logger.synchronize_between_processes()
+    print(f"NN Acc1: {metric_logger.meters['Acc1'].global_avg:6.3f}")
+    return metric_logger.meters['Acc1'].global_avg
