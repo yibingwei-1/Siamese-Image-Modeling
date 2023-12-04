@@ -19,6 +19,7 @@ import math
 import torch
 import torch.nn as nn
 
+import torch.nn.functional as F
 from util.pos_embed import get_2d_sincos_pos_embed, get_2d_sincos_pos_embed_relative
 from util.misc import LayerNorm
 from models_vit import Block, CrossBlock, PatchEmbed 
@@ -488,6 +489,9 @@ class SiameseIMViT(nn.Module):
         with torch.cuda.amp.autocast(enabled=False):
             loss = self.compute_unigrad_loss(pred.float(), target.float())
         outputs['loss_sim'] = loss.item()
+        outputs['avg_sim_pred']=avg_pairwise_sim(pred, pred).item()
+        outputs['avg_sim_vis']=avg_pairwise_sim(x1_vis_tokens, x1_vis_tokens).item()
+        outputs['avg_sim_trg']=avg_pairwise_sim(target, target).item()
 
         return loss, outputs
 
@@ -514,7 +518,15 @@ class SiameseIMViT(nn.Module):
 
         return loss
 
+def avg_pairwise_sim(q,k):
+    q = F.normalize(q, p=2, dim=-1)
+    k = F.normalize(k, p=2, dim=-1)
 
+    if len(q.shape) == 3 and len(k.shape) == 3:
+        return torch.einsum('npd,nqd->npq', q, k).mean()
+    else:
+        return torch.einsum('nhpd,nhqd->nhpq', q, k).mean()
+    
 def sim_vit_base_patch16_dec512d8b(**kwargs):
     model = SiameseIMViT(
         patch_size=16, embed_dim=768, depth=12, num_heads=12,

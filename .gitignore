@@ -6,3 +6,4 @@ phoenix-slurm-*
 .ipynb_checkpoints/
 .idea/
 .vscode/
+bash/
