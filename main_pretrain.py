@@ -206,7 +206,7 @@ def main_worker(local_rank, args):
 
     if args.env.distributed:
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
-        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
+        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.env.gpu], find_unused_parameters=True)
         model_without_ddp = model.module
     
     # build optimizer
