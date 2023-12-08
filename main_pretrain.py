@@ -42,6 +42,8 @@ import warnings
 import torch.multiprocessing as mp
 import datasets as myDBs
 
+import wandb
+
 class DataAugmentationForSIM(object):
     def __init__(self, args):
         self.args = args
@@ -252,6 +254,13 @@ def main_worker(local_rank, args):
             args=args
         )
         dist.barrier()
+        
+        # knn eval
+        global_step = (epoch + 1) * len(data_loader_train)
+        if epoch % args.eval_freq == 0 or epoch == args.epochs-1 or epoch == args.start_epoch:
+            nn_acc = misc.eval_knn(data_loader_eval, model, epoch, args=args, device=device)
+            if args.log.use_wandb and args.env.rank == 0:
+                wandb.log({'NN Acc': nn_acc}, step=global_step)
 
         # save ckpt
         if args.output_dir and ((epoch+1) % args.save_freq == 0 or epoch + 1 == args.epochs):
