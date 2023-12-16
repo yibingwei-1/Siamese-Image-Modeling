@@ -114,14 +114,14 @@ def train_one_epoch(model: torch.nn.Module,
             global_step = epoch * len(data_loader) + data_iter_step
             # log_dict = {k: meter.avg for k, meter in metric_logger.meters.items()}
             # wandb.log(log_dict, step=global_step)
-            wandb.log('train_loss', loss_value_reduce, step=global_step)
-            wandb.log('lr', lr, step=global_step)
-            wandb.log('grad_norm', grad_norm, step=global_step)
+            wandb.log({'train_loss': loss_value_reduce}, step=global_step)
+            wandb.log({'lr': lr}, step=global_step)
+            wandb.log({'grad_norm': grad_norm}, step=global_step)
             if loss_scale is not None:
-                wandb.log('loss_scale', loss_scale, step=global_step)
-            wandb.log('momentum', mm, step=global_step)
+                wandb.log({'loss_scale': loss_scale}, step=global_step)
+            wandb.log({'momentum': mm}, step=global_step)
             for k_, v_ in outputs_reduced.items():
-                wandb.log(f'train/{k_}', v_, step=global_step)
+                wandb.log({f'train/{k_}': v_}, step=global_step)
         
         # if log_writer is not None and (data_iter_step + 1) % accum_iter == 0:
         #     """ We use epoch_1000x as the x-axis in tensorboard.

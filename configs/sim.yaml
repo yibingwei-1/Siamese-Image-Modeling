@@ -71,3 +71,6 @@ amp_growth_interval: 2000 #?
 knn_eval_only: False
 
 knn_feature: avg_pool_prenorm
+save_latest_freq: 1
+save_freq: 50
+eval_freq: 1
