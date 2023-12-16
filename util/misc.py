@@ -653,6 +653,8 @@ class CheckpointManager:
                 #     self.modules[k].load_state_dict(checkpoint['model'])
             start_epoch = checkpoint['epoch']
             print(f"=> loaded checkpoint '{ckpt_fname}' (epoch {checkpoint['epoch']})")
+        else:
+            print(f"=> no checkpoint found at '{ckpt_fname}'")
 
         return start_epoch
 
