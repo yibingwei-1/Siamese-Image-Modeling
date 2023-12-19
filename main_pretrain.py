@@ -220,7 +220,7 @@ def main_worker(local_rank, args):
 
     # Checkpointing
     modules = {
-        'state_dict': model,
+        'model': model,
         'optimizer': optimizer,
         'loss_scaler': loss_scaler,
     }
