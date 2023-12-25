@@ -1,0 +1,40 @@
+defaults:
+  - hydra: default
+  - env: default
+  - log: default
+
+worker: main_linprobe
+
+batch_size: 512
+epochs: 90
+accum_iter: 1
+
+# model
+model: vit_base_patch16
+
+# optimizer
+weight_decay: 0
+lr:
+blr: 0.05
+min_lr: 0
+warmup_epochs: 10
+
+# eval
+job_name: linprobe
+pretrain_job_name:
+pretrain_resume_epoch: latest
+global_pool: False
+eval: False
+init_values: 1.0
+dist_eval: True
+
+# dataset
+dataset: imagenet
+data_path: 
+nb_classes: 1000
+use_tcs_dataset: False
+output_dir: checkpoint
+
+resume: True
+
+start_epoch: 0
