@@ -145,8 +145,8 @@ def main_worker(local_rank, args):
                 transforms.ToTensor(),
                 transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
     if not args.use_tcs_dataset:
-        dataset_train = myDBs.load_dataset(args.dataset, args.data_path, transform=transform_train, train=True)
-        dataset_train = ImagenetWithMask(os.path.join(args.data_path, 'train'),
+        # dataset_train = myDBs.load_dataset(args.dataset, args.data_path, transform=transform_train, train=True)
+        dataset_train = ImagenetWithMask(os.path.join(args.data_path, 'train'),args.dataset,
                                          transform=transform_train,
                                          with_blockwise_mask=args.with_blockwise_mask,
                                         blockwise_num_masking_patches=args.blockwise_num_masking_patches)
